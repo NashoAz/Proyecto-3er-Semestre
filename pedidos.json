@@ -1,0 +1,29 @@
+[
+    {
+        "id_pedido": "PED-924434",
+        "Nombre de usuario": "admin",
+        "Valor del pedido": 11000,
+        "Direccion": "123 #123",
+        "Metodo de pago": "Tarjeta de Débito (Redcompra)",
+        "Estado": "Entregado",
+        "codigo_entrega": "1355"
+    },
+    {
+        "id_pedido": "PED-100927",
+        "Nombre de usuario": "admin",
+        "Valor del pedido": 5500,
+        "Direccion": "123 #123",
+        "Metodo de pago": "Tarjeta de Débito (Redcompra)",
+        "Estado": "Entregado",
+        "codigo_entrega": "7386"
+    },
+    {
+        "id_pedido": "PED-391084",
+        "Nombre de usuario": "user1",
+        "Valor del pedido": 13800,
+        "Direccion": "123 #123",
+        "Metodo de pago": "Tarjeta de Débito (Redcompra)",
+        "Estado": "Entregado",
+        "codigo_entrega": "6185"
+    }
+]

@@ -1,0 +1,50 @@
+{
+    "Restaurante 1": {
+        "Menú": [
+            {
+                "comida": "Churrasco Italiano",
+                "precio": 5500
+            },
+            {
+                "comida": "Papas Fritas Medianas",
+                "precio": 2800
+            },
+            {
+                "comida": "Bebida 500cc",
+                "precio": 1500
+            }
+        ]
+    },
+    "Restaurante 2": {
+        "Menú": [
+            {
+                "comida": "Pizza Pepperoni Familiar",
+                "precio": 10990
+            },
+            {
+                "comida": "Palitos de Ajo",
+                "precio": 3500
+            },
+            {
+                "comida": "Nectar Durazno 1.5L",
+                "precio": 2000
+            }
+        ]
+    },
+    "Restaurante 3": {
+        "Menú": [
+            {
+                "comida": "Sushi Roll Queso Crema",
+                "precio": 4800
+            },
+            {
+                "comida": "Gyozas de Cerdo (5 un)",
+                "precio": 3200
+            },
+            {
+                "comida": "Té Helado",
+                "precio": 1800
+            }
+        ]
+    }
+}
