@@ -348,8 +348,8 @@ class DeliveryFacade:
 
     def __new__(cls, *args, **kwargs):
         if not cls._instancia:
-            cls._instancia = super(DeliveryFacade, cls).__new__(cls, *args, **kwargs)
-        return cls._instancia
+            # Quitamos *args y **kwargs de la llamada a super().__new__
+            cls._instancia = super
 
     # Inicializacion de Clase
     def __init__(self, auth_subsystem=None, negocio_subsystem=None):
