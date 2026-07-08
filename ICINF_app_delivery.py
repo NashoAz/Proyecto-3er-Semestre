@@ -4,13 +4,82 @@ from tkinter import messagebox
 import json
 import os
 import random
+from abc import ABC, abstractmethod
+
+# Interfaces Segregadas para ISP
+class Despachuable(ABC):
+    @abstractmethod
+    def despachar(self, pedido_contexto):
+        pass
+
+class Entregable(ABC):
+    @abstractmethod
+    def entregar(self, pedido_contexto, codigo_ingresado):
+        pass
+
+# Implementación del Patrón State
+class EstadoPedido(Despachuable, Entregable):
+    pass
+
+class EstadoPendiente(EstadoPedido):
+    def despachar(self, pedido_contexto):
+        pedido_contexto["Estado"] = "En camino"
+        return True, "Pedido despachado con éxito. Ahora está En camino."
+    def entregar(self, pedido_contexto, codigo_ingresado):
+        return False, "No se puede entregar un pedido que aún está Pendiente."
+
+class EstadoEnCamino(EstadoPedido):
+    def despachar(self, pedido_contexto):
+        return False, "El pedido ya se encuentra en camino."
+    def entregar(self, pedido_contexto, codigo_ingresado):
+        if codigo_ingresado == pedido_contexto.get("codigo_entrega"):
+            pedido_contexto["Estado"] = "Entregado"
+            return True, f"Pedido {pedido_contexto['id_pedido']} verificado y entregado con éxito."
+        return False, "El código ingresado de 4 números es incorrecto o inválido."
+
+class EstadoEntregado(EstadoPedido):
+    def despachar(self, pedido_contexto):
+        return False, "El pedido ya fue entregado de forma conforme."
+    def entregar(self, pedido_contexto, codigo_ingresado):
+        return False, "El pedido ya fue entregado de forma conforme."
+
+# Registro dinámico para cumplir OCP (Abierto a la extensión, cerrado a la modificación)
+REGISTRO_ESTADOS = {
+    "Pendiente": EstadoPendiente,
+    "En camino": EstadoEnCamino,
+    "Entregado": EstadoEntregado
+}
+
+def mapear_estado_objeto(str_estado):
+    clase_estado = REGISTRO_ESTADOS.get(str_estado, EstadoPendiente)
+    return clase_estado()
+
+# Clase Utilitaria para cumplir SRP (Separa la persistencia física de la lógica de negocio)
+class GestorPersistenciaJSON:
+    def leer_json(self, ruta):
+        if os.path.exists(ruta):
+            try:
+                with open(ruta, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError):
+                return None
+        return None
+
+    def escribir_json(self, ruta, datos):
+        try:
+            with open(ruta, "w", encoding="utf-8") as f:
+                json.dump(datos, f, indent=4, ensure_ascii=False)
+            return True
+        except IOError:
+            return False
 
 # Clase Subsistema Autenticación: Lee y modifica el json de usuarios // Valida usuarios // Reglas de seguridad
 class SubsistemaAutenticacion:
 
     # Inicialización de la clase
-    def __init__(self, archivo_usuarios="usuarios_data.json"): # Archivo donde se guardaran los usuarios registrados
+    def __init__(self, archivo_usuarios="usuarios_data.json", persistencia=None): # Archivo donde se guardaran los usuarios registrados
         self.archivo = archivo_usuarios # Instancia
+        self.persistencia = persistencia if persistencia else GestorPersistenciaJSON() # Inyección de dependencia (DIP)
         self._usuarios = {} # Diccionario vacío
         self._cargar_y_asegurar_usuarios() #Carga de usuarios
 
@@ -24,32 +93,23 @@ class SubsistemaAutenticacion:
         }
 
         # Si encuentra el archivo usuarios
-        if os.path.exists(self.archivo):
-            try:
-                # Lee el archivo usuarios
-                with open(self.archivo, "r", encoding="utf-8") as f:
-                    # Transforma la información a un diccionario
-                    datos_cargados = json.load(f) 
-                # Si alguna de las cuentas iniciales no se encuentra en el archivo
-                if not all(usuario in datos_cargados for usuario in self._cuentas_oficiales):
-                    # Se guardar temporalmente los datos ya existentes de usuarios
-                    self._usuarios = datos_cargados
-                    # Recorre la plantilla de las cuentas iniciales
-                    for k, v in self._cuentas_oficiales.items():
-                        # Si alguno de los usuarios iniciales fue borrado reinyecta en memoria con sus credenciales por defecto
-                        if k not in self._usuarios:
-                            self._usuarios[k] = v
-                    # Actualizacion del json
-                    self._guardar_usuarios()
-                # Si el archivo no tiene errores
-                else:
-                    # Asigna los datos directamente a la variable global de la clase
-                    self._usuarios = datos_cargados
-            # Si el archivo no se lee de manera correcta
-            except (json.JSONDecodeError, IOError):
-                # Sobreescribir usuarios
-                self._usuarios = self._cuentas_oficiales
+        datos_cargados = self.persistencia.leer_json(self.archivo)
+        if datos_cargados is not None:
+            # Si alguna de las cuentas iniciales no se encuentra en el archivo
+            if not all(usuario in datos_cargados for usuario in self._cuentas_oficiales):
+                # Se guardar temporalmente los datos ya existentes de usuarios
+                self._usuarios = datos_cargados
+                # Recorre la plantilla de las cuentas iniciales
+                for k, v in self._cuentas_oficiales.items():
+                    # Si alguno de los usuarios iniciales fue borrado reinyecta en memoria con sus credenciales por defecto
+                    if k not in self._usuarios:
+                        self._usuarios[k] = v
+                # Actualizacion del json
                 self._guardar_usuarios()
+            # Si el archivo no tiene errores
+            else:
+                # Asigna los datos directamente a la variable global de la clase
+                self._usuarios = datos_cargados
         # Si el archivo no existe
         else:
             # Copia las cuentas iniciales y crea el archivo usuarios
@@ -59,12 +119,8 @@ class SubsistemaAutenticacion:
     # Guardar usuarios en el json
     def _guardar_usuarios(self):
         # Abre json en escritura
-        try:
-            with open(self.archivo, "w", encoding="utf-8") as f:
-                # Convierte el diccionario guardado al formato json sobre el archivo
-                json.dump(self._usuarios, f, indent=4, ensure_ascii=False)
-        # Error de entrada o salida
-        except IOError:
+        if not self.persistencia.escribir_json(self.archivo, self._usuarios):
+            # Error de entrada o salida
             print("Error al guardar usuarios.")
 
     # Autenticar identidad de usuario y determinar rol
@@ -128,11 +184,13 @@ class SubsistemaAutenticacion:
 class SubsistemaNegocio:
     
     # Inicializacion de la clase
-    def __init__(self):
+    def __init__(self, persistencia=None):
         # Instancia de los archivos a utilizar
         self.arc_restaurantes = "restaurantes.json"
         self.arc_carrito = "carrito.json"
         self.arc_pedidos = "pedidos.json"
+        
+        self.persistencia = persistencia if persistencia else GestorPersistenciaJSON() # Inyección de dependencia (DIP)
         
         # Diccionario vacio
         self.restaurantes = {}
@@ -174,24 +232,16 @@ class SubsistemaNegocio:
         }
 
         # Si el archivo que contiene los datos de los restaurantes existe
-        if os.path.exists(self.arc_restaurantes):
-            # Abre el archivo en modo lectura
-            try:
-                with open(self.arc_restaurantes, "r", encoding="utf-8") as f:
-                    # Carga los datos en la variable
-                    contenido = json.load(f)
-                # Si el contenido del archivo no se encuentra o "Restaurante 1" no esta
-                if not contenido or "Restaurante 1" not in contenido:
-                    # Reparacion gargando el menu por defecto
-                    self.restaurantes = self._menu_defecto
-                    self._guardar_json(self.arc_restaurantes, self.restaurantes)
-                # Si el archivo esta correcto
-                else:
-                    self.restaurantes = contenido
-            # Error
-            except (json.JSONDecodeError, IOError):
+        contenido = self.persistencia.leer_json(self.arc_restaurantes)
+        if contenido is not None:
+            # Si el contenido del archivo no se encuentra o "Restaurante 1" no esta
+            if not contenido or "Restaurante 1" not in contenido:
+                # Reparacion gargando el menu por defecto
                 self.restaurantes = self._menu_defecto
                 self._guardar_json(self.arc_restaurantes, self.restaurantes)
+            # Si el archivo esta correcto
+            else:
+                self.restaurantes = contenido
         # Si el archivo de restaurantes no existe
         else:
             # Establece el menu por defecto y crea el archivo faltante
@@ -201,14 +251,9 @@ class SubsistemaNegocio:
     # Cargar datos de carrito
     def _cargar_carrito(self):
         # Si el archivo existe
-        if os.path.exists(self.arc_carrito):
-            # Se abre en modo lectura
-            try:
-                with open(self.arc_carrito, "r", encoding="utf-8") as f:
-                    self.carrito = json.load(f)
-            # Error
-            except (json.JSONDecodeError, IOError):
-                self.carrito = []
+        contenido = self.persistencia.read_json(self.arc_carrito) if hasattr(self.persistencia, 'read_json') else self.persistencia.leer_json(self.arc_carrito)
+        if contenido is not None:
+            self.carrito = contenido
         # Si no existe se crea una lista vacia
         else:
             self.carrito = []
@@ -216,25 +261,19 @@ class SubsistemaNegocio:
     # Cargar datos de los pedidos
     def _cargar_pedidos(self):
         # Si el archivo existe
-        if os.path.exists(self.arc_pedidos):
-            # Se abre en modo lectura
-            try:
-                with open(self.arc_pedidos, "r", encoding="utf-8") as f:
-                    # Carga datos
-                    self.pedidos = json.load(f)
-            # Error
-            except (json.JSONDecodeError, IOError):
-                self.pedidos = []
+        contenido = self.persistencia.leer_json(self.arc_pedidos)
+        if contenido is not None:
+            # Carga datos
+            self.pedidos = contenido
+        # Error / Si no existe se crea una lista vacia
+        else:
+            self.pedidos = []
 
     # Guardar datos en .json
     def _guardar_json(self, ruta, datos):
         # Abre el archivo en modo escritura
-        try:
-            with open(ruta, "w", encoding="utf-8") as f:
-                # Convierte el diccionario guardado al formato json sobre el archivo
-                json.dump(datos, f, indent=4, ensure_ascii=False)
-        # Error
-        except IOError:
+        if not self.persistencia.escribir_json(ruta, datos):
+            # Error
             print(f"Error al escribir en {ruta}")
 
     # Agregar comida al carrito
@@ -284,26 +323,43 @@ class SubsistemaNegocio:
         self.limpiar_carrito()
 
     # Actualizacion de estado del pedido
-    def actualizar_estado_pedido(self, id_pedido, nuevo_estado):
+    def actualizar_estado_pedido(self, id_pedido, nuevo_estado, **kwargs):
         # Se cargan los datos del pedido
         self._cargar_pedidos()
         # Bucle iterativo que recorre los elementos de la lista de pedidos. En cada vuelta la variable p guarda el diccionario con todos los datos un pedido
         for p in self.pedidos:
             if p["id_pedido"] == id_pedido:
-                p["Estado"] = nuevo_estado
-                self._guardar_json(self.arc_pedidos, self.pedidos)
-                return True
-        return False
+                estado_objeto = mapear_estado_objeto(p["Estado"])
+                if nuevo_estado == "En camino":
+                    exito, msg = estado_objeto.despachar(p)
+                elif nuevo_estado == "Entregado":
+                    exito, msg = estado_objeto.entregar(p, kwargs.get("codigo_ingresado", ""))
+                else:
+                    exito, msg = False, "Operación inválida"
+                
+                if exito:
+                    self._guardar_json(self.arc_pedidos, self.pedidos)
+                return exito, msg
+        return False, "Pedido no encontrado."
 
 # Clase Delivery Facade: Intermediario entre la interfaz gráfica y los motores del programa
 class DeliveryFacade:
+    _instancia = None
+
+    def __new__(cls, *args, **kwargs):
+        if not cls._instancia:
+            cls._instancia = super(DeliveryFacade, cls).__new__(cls, *args, **kwargs)
+        return cls._instancia
 
     # Inicializacion de Clase
-    def __init__(self):
-        # Instancia el SubsistemaAuntenticacion
-        self.auth = SubsistemaAutenticacion()
-        # Instancia el SubsistemaNegocio
-        self.negocio = SubsistemaNegocio()
+    def __init__(self, auth_subsystem=None, negocio_subsystem=None):
+        if hasattr(self, "_inicializado") and self._inicializado:
+            return
+        # Instancia el SubsistemaAuntenticacion (Aplica DIP recibiendo abstracciones)
+        self.auth = auth_subsystem if auth_subsystem else SubsistemaAutenticacion()
+        # Instancia el SubsistemaNegocio (Aplica DIP recibiendo abstracciones)
+        self.negocio = negocio_subsystem if negocio_subsystem else SubsistemaNegocio()
+        self._inicializado = True
 
     # Conexion de pantalla login con validador de seguridad
     def autenticar_credenciales(self, usuario, password):
@@ -338,7 +394,7 @@ class DeliveryFacade:
         self.negocio._cargar_carrito()
         return self.negocio.carrito
 
-    # Calcula el monto total a pagar del pedido
+    # Calculates el monto total a pagar del pedido
     def obtener_total_carrito(self):
         return sum(item["precio"] for item in self.obtener_carrito())
 
@@ -356,13 +412,13 @@ class DeliveryFacade:
         return self.negocio.pedidos
 
     # Permite al repartidor cambiar la etapa del envio
-    def modificar_estado_pedido(self, id_pedido, nuevo_estado):
-        return self.negocio.actualizar_estado_pedido(id_pedido, nuevo_estado)
+    def modificar_estado_pedido(self, id_pedido, nuevo_estado, **kwargs):
+        return self.negocio.actualizar_estado_pedido(id_pedido, nuevo_estado, **kwargs)
 
 # Clase ICINF App Delivery: Interfaz Gráfica
 class ICINFAppDelivery:
     # Inicializacion de Clase
-    def __init__(self, root):
+    def __init__(self, root, sistema_facade=None):
         # Guarda ventana base en instancia
         self.root = root
         # Titulo de la ventana
@@ -370,8 +426,8 @@ class ICINFAppDelivery:
         # Pantalla Completa
         self.root.state('zoomed')
         
-        # Instancia para contectar funcinoes con la clase Fachada
-        self.sistema = DeliveryFacade()
+        # Instancia para contectar funcinoes con la clase Fachada (DIP mediante inyección)
+        self.sistema = sistema_facade if sistema_facade else DeliveryFacade()
         
         # Variables nulas
         self.usuario_actual = None
@@ -910,7 +966,11 @@ class ICINFAppDelivery:
             # Ejecucion de boton despacho
             def ejecutar_despacho(b=btn_despachar, mid=id_p):
                 # Modificacion de estado a "En camino"
-                self.sistema.modificar_estado_pedido(mid, "En camino")
+                exito, msg = self.sistema.modificar_estado_pedido(mid, "En camino")
+                if exito:
+                    messagebox.showinfo("Despacho", msg)
+                else:
+                    messagebox.showwarning("Atención", msg)
                 b.config(state="disabled")
                 
                 #  Cambio de estado a "Normal"
@@ -941,17 +1001,17 @@ class ICINFAppDelivery:
             btn_entregar.grid(row=0, column=9, padx=5)
 
             # Marcar entregado
-            def ejecutar_entrega(ent=el_cod, mid=id_p, cod_ok=codigo_correcto):
+            def ejecutar_entrega(ent=el_cod, mid=id_p):
                 codigo_ingresado = ent.get().strip()
                 # Si el codigo ingresado es correcto
-                if codigo_ingresado == cod_ok:
-                    self.sistema.modificar_estado_pedido(mid, "Entregado")
-                    messagebox.showinfo("Verificación Correcta", f"Pedido {mid} verificado y entregado con éxito.")
+                exito, msg = self.sistema.modificar_estado_pedido(mid, "Entregado", codigo_ingresado=codigo_ingresado)
+                if exito:
+                    messagebox.showinfo("Verificación Correcta", msg)
                     self.actualizar_vista_repartidor()
                 else:
-                    messagebox.showerror("Error de Código", "El código ingresado de 4 números es incorrecto o inválido.")
+                    messagebox.showerror("Error de Código", msg)
 
-            btn_entregar.config(command=lambda e=el_cod, m=id_p, c=codigo_correcto: ejecutar_entrega(e, m, c))
+            btn_entregar.config(command=lambda e=el_cod, m=id_p: ejecutar_entrega(e, m))
 
     # Pestaña administrador
     def crear_pestaña_administrador(self):
@@ -1137,5 +1197,12 @@ class ICINFAppDelivery:
 
 if __name__ == "__main__":##
     root = tk.Tk()
-    app = ICINFAppDelivery(root)
+    
+    # Inyección de Dependencias (DIP) desde la raíz del sistema
+    persistencia_global = GestorPersistenciaJSON()
+    auth_sub = SubsistemaAutenticacion(persistencia=persistencia_global)
+    negocio_sub = SubsistemaNegocio(persistencia=persistencia_global)
+    facade_sistema = DeliveryFacade(auth_subsystem=auth_sub, negocio_subsystem=negocio_sub)
+    
+    app = ICINFAppDelivery(root, sistema_facade=facade_sistema)
     root.mainloop()
