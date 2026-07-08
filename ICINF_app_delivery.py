@@ -6,7 +6,7 @@ import os
 import random
 from abc import ABC, abstractmethod
 
-# Interfaces Segregadas para ISP
+# --- Interfaces Segregadas para ISP ---
 class Despachuable(ABC):
     @abstractmethod
     def despachar(self, pedido_contexto):
@@ -17,7 +17,7 @@ class Entregable(ABC):
     def entregar(self, pedido_contexto, codigo_ingresado):
         pass
 
-# Implementación del Patrón State
+# --- Implementación del Patrón State ---
 class EstadoPedido(Despachuable, Entregable):
     pass
 
@@ -73,7 +73,7 @@ class GestorPersistenciaJSON:
         except IOError:
             return False
 
-# Clase Subsistema Autenticación: Lee y modifica el json de usuarios // Valida usuarios // Reglas de seguridad
+# Clase Subsistema Autenticación: Lee y modifies el json de usuarios // Valida usuarios // Reglas de seguridad
 class SubsistemaAutenticacion:
 
     # Inicialización de la clase
@@ -251,7 +251,7 @@ class SubsistemaNegocio:
     # Cargar datos de carrito
     def _cargar_carrito(self):
         # Si el archivo existe
-        contenido = self.persistencia.read_json(self.arc_carrito) if hasattr(self.persistencia, 'read_json') else self.persistencia.leer_json(self.arc_carrito)
+        contenido = self.persistencia.leer_json(self.arc_carrito)
         if contenido is not None:
             self.carrito = contenido
         # Si no existe se crea una lista vacia
@@ -348,12 +348,13 @@ class DeliveryFacade:
 
     def __new__(cls, *args, **kwargs):
         if not cls._instancia:
-            # Quitamos *args y **kwargs de la llamada a super().__new__
-            cls._instancia = super
+            cls._instancia = super(DeliveryFacade, cls).__new__(cls)
+            cls._instancia._inicializado = False
+        return cls._instancia
 
     # Inicializacion de Clase
     def __init__(self, auth_subsystem=None, negocio_subsystem=None):
-        if hasattr(self, "_inicializado") and self._inicializado:
+        if self._inicializado:
             return
         # Instancia el SubsistemaAuntenticacion (Aplica DIP recibiendo abstracciones)
         self.auth = auth_subsystem if auth_subsystem else SubsistemaAutenticacion()
